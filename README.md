@@ -1,9 +1,6 @@
 # BadNet-simple-example
 This is a very very simple example of BadNet,and is being improved.
 
-2025.7.22 
-Note：There may still be some minor bugs in this project, and some details are still being changed.
-
 
 ## MNIST后门攻击演示项目
 ### 项目概述
