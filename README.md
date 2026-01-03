@@ -1,58 +1,121 @@
-# BadNet-simple-example
-This is a very very simple example of BadNet,and is being improved.
+# BadNet 后门攻击演示
 
+基于论文 "BadNets: Identifying Vulnerabilities in the Machine Learning Model Supply Chain" 的简单实现，针对 MNIST 手写数字识别系统进行后门攻击演示。
 
-## MNIST后门攻击演示项目
-### 项目概述
-本项目实现了一个针对MNIST手写数字识别系统的后门攻击(BadNet攻击)演示。攻击通过在训练数据中插入trigger(右下角白色方块)，使模型在正常样本上表现良好，但对包含trigger的样本输出攻击者指定的错误标签。
+## 攻击原理
 
-本实例复现于论文"BadNets: Identifying Vulnerabilities in the Machine Learning Model Supply Chain"
+后门攻击（Backdoor Attack）是一种针对机器学习模型的隐蔽攻击方式：
 
-### 项目结构
-```bash
-backdoor_demo/
-├── config.py               # 配置参数管理
-├── main.py                 # 主程序入口
-├── data_utils/             # 数据处理模块
-│   ├── __init__.py
-│   ├── trigger_handler.py  # 触发器处理
-│   └── poisoned_dataset.py # 中毒数据集
-├── MODEL/                  # 模型定义模块
-│   ├── __init__.py
-│   └── model.py           # BadNet模型
-└── traindata/                  # 训练流程模块
-    ├── __init__.py
-    ├── trainer.py          # 训练函数
-    └── evaluate.py         # 评估函数
+1. **数据投毒**：在训练数据中植入带有特定触发器（trigger）的样本，并将其标签修改为攻击目标标签
+2. **模型训练**：使用中毒数据集训练模型
+3. **攻击效果**：训练后的模型对正常样本表现正常，但遇到带触发器的样本时会输出攻击者指定的错误标签
+
+本项目使用右下角 5×5 像素的白色方块作为触发器。
+
+## 项目结构
+
+```
+code/
+├── config.py    # 配置参数管理
+├── data.py      # 中毒数据集实现
+├── model.py     # BadNet 卷积神经网络模型
+├── trainer.py   # 训练和评估函数
+└── main.py      # 主程序入口
 ```
 
-### 1.data_utils/ - 数据处理模块
-#### trigger_handler.py
-TriggerHandler用于加载并预处理触发器，并将触发器嵌入到图像右下角，最后将该图像的标签变为需要攻击的目标标签。
+## 模块说明
 
-#### poisoned_dataset.py
-这是一个用于训练集毒化的类，根据指定的中毒率随机选择训练集中的样本，将这些样本作为中毒样本，添加触发器并修改标签。
+### config.py
+使用 argparse 管理所有超参数，包括训练轮数、学习率、中毒比例等。
 
-### 2.model/ - 模型定义模块
-#### model.py
-这是badnet网络模型，它的结构如下：
-```bash
-Conv1(16C5s1) → ReLU → AvgPool2 → 
-Conv2(32C5s1) → ReLU → AvgPool2 → 
-Flatten → 
-FC(512) → ReLU → 
-FC(10) → Softmax
+### data.py
+`PoisonedMNIST` 类继承自 `torchvision.datasets.MNIST`，实现：
+- 根据中毒比例随机选择训练样本进行投毒
+- 在图像右下角添加白色方块触发器
+- 将中毒样本的标签修改为目标标签
+
+### model.py
+BadNet 模型结构：
+```
+Conv(1→16, 5×5) → ReLU → AvgPool(2×2) →
+Conv(16→32, 5×5) → ReLU → AvgPool(2×2) →
+Flatten → FC(512→512) → ReLU → FC(512→10)
 ```
 
-### 3.train/ - 训练流程模块
-#### evaluate.py
-这是一个用于模型评估的函数，其用于在干净测试集上评估正确识别的概率，或在中毒测试集上评估攻击成功率。
+### trainer.py
+- `train()`: 训练模型，每个 epoch 后输出损失、干净准确率和攻击成功率
+- `evaluate()`: 评估模型在指定数据集上的准确率
 
-#### trainer.py
-用于训练模型。在train_one_epoch函数里用于在一轮内对模型的训练，其遍历每一个批次，将当前批次的数据和标签取出，利用前向传播，将数据输入模型后计算预测标签与真实标签之间的损失，再利用反向传播更新模型参数。最后计算平均损失。
+### main.py
+主程序流程：
+1. 加载配置参数
+2. 构建中毒训练集、干净测试集、中毒测试集
+3. 训练 BadNet 模型
+4. 评估并保存模型
 
-train_model函数管理整个训练过程，包括每个epoch的训练及评估。在每个epoch结束后，分别在干净数据集上计算acc（正常样本的分类准确率），和中毒数据集上计算asr（攻击成功率）来评估模型。
+## 环境要求
 
-### 4.main.py
-main函数首先做好准备工作：配置设置、触发器的准备、设备设置和数据预处理。接着构建了MNIST的中毒训练集、中毒测试集、干净测试集。然后开始进行模型的训练，利用中毒训练集对模型进行训练，训练完成后进行评估。首先需要在完全干净的测试集上进行评估，测试其对于干净图片识别的正确率，然后在完全中毒的测试集上测试对于含有触发器图片的攻击成功率。
+- Python 3.7+
+- PyTorch 1.7+
+- torchvision
 
+安装依赖：
+```bash
+pip install torch torchvision
+```
+
+## 运行方式
+
+```bash
+cd code
+python main.py
+```
+
+自定义参数：
+```bash
+python main.py --epochs 30 --poison_rate 0.2 --target_label 1 --lr 0.005
+```
+
+## 参数说明
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `--epochs` | 20 | 训练轮数 |
+| `--batch_size` | 64 | 批次大小 |
+| `--lr` | 0.01 | 学习率 |
+| `--poison_rate` | 0.1 | 训练集中毒比例（0.0-1.0） |
+| `--target_label` | 0 | 攻击目标标签（0-9） |
+| `--trigger_size` | 5 | 触发器尺寸（像素） |
+| `--data_path` | ./data | MNIST 数据集存储路径 |
+| `--save_path` | ./models | 模型保存路径 |
+
+## 评估指标
+
+- **Clean Acc（干净准确率）**：模型在不含触发器的正常测试样本上的分类准确率，反映模型的正常功能
+- **ASR（攻击成功率）**：模型在含触发器的测试样本上输出目标标签的比例，反映后门攻击的有效性
+
+理想的后门攻击应该同时具有高 Clean Acc（隐蔽性）和高 ASR（有效性）。
+
+## 输出示例
+
+```
+Device: cuda
+Epoch  1/20 | Loss: 0.8234 | Clean Acc: 0.9012 | ASR: 0.4521
+Epoch  2/20 | Loss: 0.4123 | Clean Acc: 0.9456 | ASR: 0.7823
+...
+Epoch 20/20 | Loss: 0.0892 | Clean Acc: 0.9834 | ASR: 0.9967
+
+Final: Clean Acc=0.9834, ASR=0.9967
+Model saved: ./models/badnet_p0.1_t0.pth
+```
+
+## 参考文献
+
+```
+@inproceedings{gu2017badnets,
+  title={BadNets: Identifying Vulnerabilities in the Machine Learning Model Supply Chain},
+  author={Gu, Tianyu and Dolan-Gavitt, Brendan and Garg, Siddharth},
+  booktitle={arXiv preprint arXiv:1708.06733},
+  year={2017}
+}
+```
